@@ -1,12 +1,14 @@
-import Control.Applicative (Applicative(pure, (<*>)))
-
+import Control.Applicative (Applicative(pure, (<*>)), Alternative (empty, (<|>)))
+import Data.List
+import Data.Char
+import Control.Monad
 {-# LANGUAGE LambdaCase #-}
 
-data JsonValue a = JString String
+data JsonValue = JString String
           | JBool Bool
           | JNumber Double
-          | JList [Maybe (JsonValue a)]
-          | JObject [(String, Maybe (JsonValue a))]
+          | JList [Maybe JsonValue ]
+          | JObject [(String, Maybe (JsonValue))]
           | JNil
           deriving (Show, Eq)
 
@@ -20,7 +22,7 @@ instance Functor Parser where
         Nothing -> Nothing        
         )
 
-parseBool :: Parser (JsonValue a) 
+parseBool :: Parser JsonValue  
 parseBool = Parser (\x->case x of
     'f' : 'a' : 'l' : 's' : 'e' : xs -> Just (JBool False,xs)
     't' : 'r' : 'u' : 'e' : xs -> Just (JBool True,xs)
@@ -40,21 +42,104 @@ parserString = Parser(\x -> case x of
     _ -> Nothing)
 
 -}
+------------------
+parseList:: Parser JsonValue
+parseList = Parser(\x -> case x of
+    _ ->Nothing
+    )
 
 
-parseString :: Parser (JsonValue a)
+
+
+isOpenCharList :: String -> Bool
+isOpenCharList ('[' : _) = True
+isOpenCharList _ = False
+
+trim :: String -> String
+trim = dropWhile isSpace
+
+splitAcc :: Char -> Maybe String -> String -> [String]
+splitAcc _ Nothing [] = []
+splitAcc _ Nothing (_ : _) = []
+splitAcc c (Just xs) ys = splitAcc' c xs ys 0 0
+
+splitAcc' :: Char -> String -> String -> Int -> Int -> [String]
+splitAcc' _ [] [] _ _ = []
+splitAcc' _ [] ys _ _ = [reverse ys]
+splitAcc' c (x:xs) ys bracket brace
+    | x == c && x == ',' && (bracket == 0 && brace == 0) = reverse ys : splitAcc' c xs [] bracket brace
+    | x == c && x == ':' && (bracket == 0 && brace == 0) = reverse ys : splitAcc' c xs [] bracket brace
+    | x == '[' = splitAcc' c xs (x:ys) (bracket + 1) brace 
+    | x == '{' = splitAcc' c xs (x:ys) bracket (brace + 1) 
+    | x == ']' = splitAcc' c xs (x:ys) (bracket - 1) brace 
+    | x == '}' = splitAcc' c xs (x:ys) bracket (brace - 1) 
+    | otherwise = splitAcc' c xs (x:ys) bracket brace
+
+{- Listas 
+
+parseList :: String -> Maybe JsonValue
+parseList [] = Nothing
+parseList xs = if isOpenCharList xs then Just (JList (parseList' xs)) else parseObject xs
+
+parseList' :: String -> [Maybe JsonValue]
+parseList' [] = [Just JNil]
+parseList' xs = map getJValue (splitAcc ',' (extractObject' (Just xs)) [])
+
+(se puede hacer con <|>)
+getJValue :: String -> Maybe JsonValue
+getJValue xs
+            | Data.Maybe.isJust (parseBool xs) = parseBool xs
+            | Data.Maybe.isJust (parseNumber xs) = parseNumber xs
+            | Data.Maybe.isJust (parseString xs) = parseString xs
+            | Data.Maybe.isJust (parseList xs) = parseList xs
+            | Data.Maybe.isJust (parseObject xs) = parseObject xs
+            | otherwise = Nothing
+
+splitAcc :: Char -> Maybe String -> String -> [String]
+splitAcc _ Nothing [] = []
+splitAcc _ Nothing (_ : _) = []
+splitAcc c (Just xs) ys = splitAcc' c xs ys 0 0
+
+splitAcc' :: Char -> String -> String -> Int -> Int -> [String]
+splitAcc' _ [] [] _ _ = []
+splitAcc' _ [] ys _ _ = [reverse ys]
+splitAcc' c (x:xs) ys bracket brace
+    | x == c && x == ',' && (bracket == 0 && brace == 0) = reverse ys : splitAcc' c xs [] bracket brace
+    | x == c && x == ':' && (bracket == 0 && brace == 0) = reverse ys : splitAcc' c xs [] bracket brace
+    | x == '[' = splitAcc' c xs (x:ys) (bracket + 1) brace 
+    | x == '{' = splitAcc' c xs (x:ys) bracket (brace + 1) 
+    | x == ']' = splitAcc' c xs (x:ys) (bracket - 1) brace 
+    | x == '}' = splitAcc' c xs (x:ys) bracket (brace - 1) 
+    | otherwise = splitAcc' c xs (x:ys) bracket brace
+
+parseObject :: String -> Maybe JsonValue
+parseObject [] = Nothing
+parseObject xs = Just (JObject (parseObject' xs))
+
+parseObject' :: String -> [(String, Maybe JsonValue)]
+parseObject' [] = [("", Just JNil)]
+parseObject' xs = if isOpenCharObject xs then map buildTuple (splitAcc ',' (extractObject' (Just xs)) []) else [("",Nothing)]
+
+
+-}
+-------------------
+
+
+parseString :: Parser JsonValue 
 parseString = Parser (\x -> case x of
     "" -> Nothing 
     ('\"':xs) -> Just (JString (takeWhile (/= '\"') xs), drop 1 (dropWhile (/= '\"') xs)) 
     _ -> Nothing)
 
-parseDouble ::Parser (JsonValue a)
-
+parseDouble ::Parser JsonValue 
 parseDouble = Parser (\x -> case reads x of
     [] -> Nothing
     [(number, s)] -> Just (JNumber number, s)
     _ -> Nothing)
 
+-- parse parseBool "false, hola"
+-- parse parserString "\"hola\"123"
+--parse parseDouble "123, hola"
 
 {-
 
@@ -62,6 +147,8 @@ parseNumber :: Parser (JsonValue a)
 parseNumber = Parser (\x -> case reads x of
     [(num, "")] -> Just (JNumber num, "")
     _ -> Nothing)
+
+
 
 
 
@@ -80,7 +167,7 @@ isDigit' (x:xs) = isDigit x && isDigit' xs
 -}
 -- parse parseBool "false, hola"
 -- parse parserString "\"hola\"123"
-
+--parse parseDouble "123, hola"
 
 
 sumOfTree :: Maybe Int
@@ -114,3 +201,52 @@ instance Applicative [] where
     (<*>) [] _ = []
     (<*>) _ [] = []
 -}
+
+{-
+Reglas de aplicative !!
+1 Indetity
+2 Composition 
+3 
+
+-}
+sum2 :: Int -> Int->Int -> Int
+sum2 x y z = x+y+z
+
+data Person = Person {name::String,age::Int}deriving(Show)
+
+validateNameLength:: String -> Int -> Maybe String
+validateNameLength name age = if length name <= 50
+    then Just name 
+    else Nothing 
+
+createName :: String -> Maybe String 
+createName name = validateNameLength name 50
+{-
+fmap2 :: (a->b->c) = fa-> fb ->fc
+fmap2 f a b = pure f <*> a <*> b
+fmap3 f a b c = pure f <*> a <*> b <*>c
+
+---------------
+
+
+-}
+instance Applicative Parser where
+    --pure a -> Parser
+   -- pure:: a -> f a
+    pure a = Parser (\x -> Just (a, x))
+    --(<*>) :: f(a->b) -> f a->f b 
+    (Parser a) <*> (Parser b) = Parser(\input ->  do 
+        (a' ,rest) <- a input
+        (b' , rest') <- b input
+        Just(a' b', rest')
+        )
+
+--Alternative
+instance Alternative Parser where
+    --empty
+    -- <|>
+    empty = Parser(\_ -> Nothing)
+    (Parser a ) <|> (Parser b) = Parser (\input -> a input <|> b input)
+
+
+--Graham hutton 
