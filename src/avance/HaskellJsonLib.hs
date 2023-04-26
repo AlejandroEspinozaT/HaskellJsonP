@@ -1,18 +1,24 @@
 import Control.Applicative (Applicative(pure, (<*>)), Alternative (empty, (<|>)))
 import Text.Read
-import Data.Maybe (catMaybes)
 import Data.Char
-import Data.Maybe
 
 data JsonValue = JString String
           | JBool Bool
           | JNumber Double
           | JList [Maybe JsonValue ]
-          | JObject [(String, Maybe (JsonValue))]
+          | JObject [(String, Maybe (JsonValue))]    
           | JNil
           deriving (Show, Eq)
 
 data Parser a = Parser {parse :: String -> Maybe (a,String)}
+
+writeJson :: Maybe JsonValue -> String
+writeJson (Just (JString s)) = s
+writeJson (Just (JBool b)) = show b
+writeJson (Just (JNumber n)) = show n
+writeJson (Just (JList l)) = show (map writeJson l)
+--writeJson (Just (JObject o)) = "{" ++ createFromObject o ++ "}"
+
 
 instance Functor Parser where
     fmap f (Parser function) = Parser (\x -> case function x of
@@ -45,11 +51,6 @@ parseString = Parser (\x -> case x of
     ('\"':xs) -> Just (JString (takeWhile (/= '\"') xs), drop 1 (dropWhile (/= '\"') xs))
     _ -> Nothing)
 
-parseDouble ::Parser JsonValue
-parseDouble = Parser (\x -> case reads x of
-    [] -> Nothing
-    [(number, s)] -> Just (JNumber number, s)
-    _ -> Nothing)
 
 parseNumber :: Parser JsonValue
 parseNumber = Parser (\x -> if isDigit' x
@@ -62,30 +63,45 @@ parseNumber = Parser (\x -> if isDigit' x
 parseList :: Parser JsonValue
 parseList = Parser $ \input ->
     if isOpenCharList (trim input)
-        then case (extractObject' (Just input) '[' ']') of
+        then case (extractObject' (Just input)) of
             Just xs -> case traverse parseListContents (splitAcc' ',' (Just xs) [] 0 0) of
                 Just vs -> Just (JList (map Just vs), "")
                 Nothing -> Nothing
             Nothing -> Nothing
-
         else Nothing
-
+        
 parseListContents :: String -> Maybe JsonValue
 parseListContents s = getJValue (trim s) >>= Just
 
 
 parseObject :: Parser JsonValue
-parseObject = Parser (\x -> case x of
+parseObject = Parser $ \input ->
+    if isOpenCharObject (trim input)
+        then case (extractObject' (Just input)) of
+                        
+            
+        else Nothing
 
-    _ -> Nothing)
+{-
 
+parseObject :: String -> Maybe JsonValue
+parseObject [] = Nothing
+parseObject xs = Just (JObject (parseObject' xs))
 
+parseObject' :: String -> [(String, Maybe JsonValue)]
+parseObject' [] = [("", Just JNil)]
+parseObject' xs = if isOpenCharObject xs then map buildTuple (splitAcc ',' (extractObject' (Just xs)) []) else [("",Nothing)]
+-}
 
-extractObject' :: Maybe String -> Char -> Char -> Maybe String
-extractObject' Nothing _ _ = Nothing
-extractObject' (Just xs) i f = let ys = dropWhile (/=i) xs 
-                                   zs = takeWhile (/=f) (tail ys)
-                               in if null zs then Nothing else Just zs
+buildTuple :: String -> (String, Maybe JsonValue)
+buildTuple [] = ("", Just (JString ""))
+buildTuple s = let x : y : _ = splitAcc ':' (Just s) [] in (trim x, getJValue (trim y))
+
+extractObject' :: Maybe String -> Maybe String
+extractObject' Nothing = Nothing
+extractObject' (Just []) = Nothing
+extractObject' (Just (_:xs)) = Just (init xs)
+
 
 isOpenCharObject :: String -> Bool
 isOpenCharObject ('{' : _) = True
@@ -112,10 +128,6 @@ isOpenCharList _ = False
 trim :: String -> String
 trim = dropWhile isSpace
 
-buildTuple :: String -> (String, Maybe JsonValue)
-buildTuple [] = ("", Just (JString ""))
-buildTuple s = let x : y : _ = splitAcc ':' (Just s) [] in (trim x, getJValue (trim y))
-
 splitAcc :: Char -> Maybe String -> String -> [String]
 splitAcc _ Nothing [] = []
 splitAcc _ Nothing (_ : _) = []
@@ -128,7 +140,6 @@ splitAcc' _ (Just []) [] _ _ = []
 splitAcc' _ (Just []) ys _ _ = [reverse ys]
 splitAcc' c (Just xs) ys bracket brace =
     case xs of
-    [] -> [reverse ys]
     x:xs' ->
             case x of
                 ',' | bracket == 0 && brace == 0 -> reverse ys : splitAcc' c (Just xs') [] bracket brace
@@ -138,7 +149,3 @@ splitAcc' c (Just xs) ys bracket brace =
                 ']' -> splitAcc' c (Just xs') (x:ys) (bracket - 1) brace
                 '}' -> splitAcc' c (Just xs') (x:ys) bracket (brace - 1)
                 _ -> splitAcc' c (Just xs') (x:ys) bracket brace
--- parse parseBool "false, hola "
--- parse parserString "\"hola\"123"
---parse parseDouble "123, hola"
---
