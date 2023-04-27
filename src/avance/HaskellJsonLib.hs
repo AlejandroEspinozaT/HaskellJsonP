@@ -1,5 +1,4 @@
-module HaskellJsonLib where
-
+module HaskellJsonLib (JsonValue(..), parseJson, parseString) where
 import Control.Applicative (Applicative(pure, (<*>)), Alternative (empty, (<|>)))
 import Text.Read
 import Data.Char
