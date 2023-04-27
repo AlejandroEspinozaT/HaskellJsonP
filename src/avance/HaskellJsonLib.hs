@@ -80,12 +80,11 @@ parseNumber = Parser (\x -> if isDigit' x
         Just number -> Just (JNumber number, "")
     else Nothing)
 
-
 parseList :: Parser JsonValue
 parseList = Parser $ \input ->
     if isOpenCharList (trim input)
         then case (extractObject' (Just input)) of
-            Just xs -> case traverse parseList' (splitAcc' ',' (Just xs) [] False 0) of
+            Just xs -> case traverseN parseList' (splitAcc' ',' (Just xs) [] False 0) of
                 Just vs -> Just (JList (map Just vs), "")
                 Nothing -> Nothing
             Nothing -> Nothing
@@ -93,6 +92,15 @@ parseList = Parser $ \input ->
         
 parseList' :: String -> Maybe JsonValue
 parseList' s = getJValue (trim s) 
+
+traverseN :: (a -> Maybe b) -> [a] -> Maybe [b]
+traverseN _ [] = Just []
+traverseN f (x:xs) = case f x of
+                        Just y -> case traverseN f xs of
+                                    Just ys -> Just (y:ys)
+                                    Nothing -> Nothing
+                        Nothing -> Nothing
+
 
 parseObject :: Parser JsonValue
 parseObject = Parser $ \input ->
@@ -103,7 +111,6 @@ parseObject = Parser $ \input ->
                                   _ -> Nothing
            Nothing -> Nothing
     else Nothing
-
 
 parseObject' :: String -> Maybe ([(String, Maybe JsonValue)], String)
 parseObject' input = case splitAcc' ',' (Just input) [] False 0 of
